@@ -1,25 +1,6 @@
-/* STATIC DATA */
+import { useState, useEffect } from "react";
 
-const habits = [
-  {
-    id: 1,
-    title: "Morning Workout",
-    target: 7,
-    progress: 4,
-  },
-  {
-    id: 2,
-    title: "Read 20 Pages",
-    target: 10,
-    progress: 10,
-  },
-  {
-    id: 3,
-    title: "Drink 2L Water",
-    target: 5,
-    progress: 2,
-  },
-];
+/* RANK SYSTEM */
 
 const RANKS = [
   { name: "Bronze", min: 0, color: "#cd7f32" },
@@ -29,18 +10,73 @@ const RANKS = [
   { name: "Diamond", min: 1500, color: "#38bdf8" },
 ];
 
-/* STATIC CALCULATIONS */
+function getRank(totalXP) {
+  return [...RANKS].reverse().find((rank) => totalXP >= rank.min);
+}
 
-const totalXP = habits.reduce((acc, h) => acc + h.progress, 0);
-const level = Math.floor(totalXP / 100) + 1;
-const xpInLevel = totalXP % 100;
-const xpPercent = xpInLevel;
-
-const rank = [...RANKS].reverse().find((r) => totalXP >= r.min) || RANKS[0];
-
-/* UI ONLY APP */
+/* MAIN APP */
 
 export default function App() {
+  const [habits, setHabits] = useState(() => {
+    const stored = localStorage.getItem("xp-habits");
+    return stored ? JSON.parse(stored) : [];
+  });
+
+  const [filter, setFilter] = useState("all");
+
+  /* PERSIST TO LOCAL STORAGE */
+
+  useEffect(() => {
+    localStorage.setItem("xp-habits", JSON.stringify(habits));
+  }, [habits]);
+
+  /* XP + LEVEL SYSTEM */
+
+  const totalXP = habits.reduce((acc, h) => acc + h.progress, 0);
+
+  const level = Math.floor(totalXP / 100) + 1;
+  const xpInLevel = totalXP % 100;
+  const xpPercent = xpInLevel;
+
+  const rank = getRank(totalXP);
+
+  /* ACTIONS */
+
+  function addHabit(habit) {
+    setHabits((prev) => [...prev, habit]);
+  }
+
+  function deleteHabit(id) {
+    setHabits((prev) => prev.filter((h) => h.id !== id));
+  }
+
+  function increment(id) {
+    setHabits((prev) =>
+      prev.map((h) =>
+        h.id === id && h.progress < h.target
+          ? { ...h, progress: h.progress + 1 }
+          : h,
+      ),
+    );
+  }
+
+  function decrement(id) {
+    setHabits((prev) =>
+      prev.map((h) =>
+        h.id === id && h.progress > 0 ? { ...h, progress: h.progress - 1 } : h,
+      ),
+    );
+  }
+
+  const filtered =
+    filter === "all"
+      ? habits
+      : filter === "completed"
+        ? habits.filter((h) => h.progress === h.target)
+        : habits.filter((h) => h.progress < h.target);
+
+  const completed = habits.filter((h) => h.progress === h.target).length;
+
   return (
     <>
       {/* HERO */}
@@ -73,19 +109,11 @@ export default function App() {
         </div>
       </header>
 
-      {/* ADD SECTION  */}
+      {/* ADD SECTION */}
 
       <section className="add-section">
         <div className="section-inner">
-          <form>
-            <input placeholder="New habit..." />
-            <select>
-              {[5, 7, 10, 14, 21].map((num) => (
-                <option key={num}>{num} XP</option>
-              ))}
-            </select>
-            <button className="btn-primary">Add Habit</button>
-          </form>
+          <AddHabitForm onAdd={addHabit} />
         </div>
       </section>
 
@@ -94,19 +122,40 @@ export default function App() {
       <section className="arena">
         <div className="section-inner">
           <div className="filters">
-            <button className="active">All</button>
-            <button>Active</button>
-            <button>Completed</button>
+            <button
+              className={filter === "all" ? "active" : ""}
+              onClick={() => setFilter("all")}
+            >
+              All
+            </button>
+            <button
+              className={filter === "active" ? "active" : ""}
+              onClick={() => setFilter("active")}
+            >
+              Active
+            </button>
+            <button
+              className={filter === "completed" ? "active" : ""}
+              onClick={() => setFilter("completed")}
+            >
+              Completed
+            </button>
           </div>
 
-          {habits.map((habit) => (
-            <HabitItem key={habit.id} habit={habit} />
+          {filtered.map((habit) => (
+            <HabitItem
+              key={habit.id}
+              habit={habit}
+              onDelete={deleteHabit}
+              onIncrement={increment}
+              onDecrement={decrement}
+            />
           ))}
 
           <div className="stats">
-            Total XP: {totalXP} • Completed:{" "}
-            {habits.filter((h) => h.progress === h.target).length}/
-            {habits.length}
+            {habits.length === 0
+              ? "Start your first habit ⚡"
+              : `Total XP: ${totalXP} • Completed: ${completed}/${habits.length}`}
           </div>
         </div>
       </section>
@@ -118,12 +167,53 @@ export default function App() {
   );
 }
 
-/* HABIT ITEM  */
+/* ADD FORM */
 
-function HabitItem({ habit }) {
+function AddHabitForm({ onAdd }) {
+  const [title, setTitle] = useState("");
+  const [target, setTarget] = useState(7);
+
+  function submit(e) {
+    e.preventDefault();
+    if (!title.trim()) return;
+
+    onAdd({
+      id: Date.now(),
+      title: title.trim(),
+      target: Number(target),
+      progress: 0,
+    });
+
+    setTitle("");
+    setTarget(7);
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <input
+        placeholder="New habit..."
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+      />
+
+      <select value={target} onChange={(e) => setTarget(e.target.value)}>
+        {[5, 7, 10, 14, 21].map((num) => (
+          <option key={num} value={num}>
+            {num} XP
+          </option>
+        ))}
+      </select>
+
+      <button className="btn-primary">Add Habit</button>
+    </form>
+  );
+}
+
+/* HABIT ITEM */
+
+function HabitItem({ habit, onDelete, onIncrement, onDecrement }) {
   const percent = Math.round((habit.progress / habit.target) * 100);
-
-  const completed = habit.progress === habit.target;
+  const leveledUp = habit.progress === habit.target;
 
   return (
     <div className="habit">
@@ -138,12 +228,20 @@ function HabitItem({ habit }) {
         <div className="progress-fill" style={{ width: `${percent}%` }} />
       </div>
 
-      {completed && <div className="level-up">QUEST COMPLETED 🎉</div>}
+      {leveledUp && <div className="level-up">QUEST COMPLETED 🎉</div>}
 
       <div className="habit-actions">
-        <button className="btn-secondary">−</button>
-        <button className="btn-secondary">+</button>
-        <button className="btn-danger">Delete</button>
+        <button className="btn-secondary" onClick={() => onDecrement(habit.id)}>
+          −
+        </button>
+
+        <button className="btn-secondary" onClick={() => onIncrement(habit.id)}>
+          +
+        </button>
+
+        <button className="btn-danger" onClick={() => onDelete(habit.id)}>
+          Delete
+        </button>
       </div>
     </div>
   );
